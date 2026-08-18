@@ -1,0 +1,35 @@
+# Datasets (large; CelebA is downloaded inside Colab, not committed)
+dataset/
+
+# Trained model — uncomment to keep large binaries out of git.
+# You may prefer to COMMIT it so deployment hosts get the model.
+# *.keras
+# backend/model/*.keras
+
+# Python
+**/__pycache__/
+*.pyc
+*.pyo
+**/.venv/
+.venv/
+venv/
+
+# Node / Vite
+frontend/node_modules/
+frontend/dist/
+
+# Frontend build copied into the backend image (created during the Docker build)
+backend/static/
+
+# Env / local overrides
+.env.local
+*.local
+
+# Local dev helper (machine-specific absolute paths)
+frontend/run-dev.bat
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

@@ -1,0 +1,12 @@
+# Smile Classifier — backend dependencies
+fastapi>=0.110.0
+uvicorn[standard]>=0.29.0
+python-multipart>=0.0.9      # required by FastAPI for file uploads
+pillow>=10.2.0               # image decoding (+ EXIF rotation)
+numpy>=1.26.0
+opencv-python-headless>=4.9.0,<5   # face detection (headless=server-friendly). Pin <5: OpenCV 5.0 removed the top-level cv2.CascadeClassifier that face_service uses.
+tensorflow>=2.16.0           # provides Keras 3, needed to load smile_classifier.keras
+
+# NOTE (Windows): TensorFlow wheels may not exist yet for Python 3.13.
+# If `pip install -r requirements.txt` fails on tensorflow, create the venv
+# with Python 3.11 or 3.12 (see backend/README.md).
