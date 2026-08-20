@@ -1,111 +1,78 @@
----
-title: Smile Classifier
-emoji: 😊
-colorFrom: indigo
-colorTo: pink
-sdk: docker
-app_port: 7860
-pinned: false
----
-
 # 😊 Smile Classifier
 *by Papon*
 
-Detects faces in a photo and classifies each as **smiling** or **not smiling**,
-using a MobileNetV2 model transfer-learned on the CelebA dataset.
+**Live demo → https://19papon.github.io/smile-classifier/**
+
+Drop in a photo and every face is detected and scored as **smiling** or
+**not smiling**, using a MobileNetV2 model transfer-learned on the CelebA
+dataset. The whole thing runs **in your browser** — nothing is uploaded, and
+there's no server to keep running.
 
 ```
-Photo ──> [React UI] ──POST /predict──> [FastAPI]
-                                          ├─ Face detection (OpenCV YuNet) + crop
-                                          └─ MobileNetV2 (Keras) ─> P(smiling)
-                                        <── JSON: label + confidence + face boxes
+Photo ─> YuNet face detection ─> crop each face (+margin) ─> 224×224
+                                                              └─> MobileNetV2 ─> P(smiling)
+                                                            <─ label + confidence + face boxes
 ```
+
+Face detection (YuNet) runs via **onnxruntime-web** and the smile model
+(MobileNetV2) runs via **tfjs-tflite** — both compiled to WebAssembly, so the
+page works on any static host with no backend.
 
 ## Project layout
 ```
 smile-classifier/
 ├── training/     # Colab notebook — download → train → export smile_classifier.keras
-├── backend/      # FastAPI: face detection + /predict  (runs on your laptop)
-├── frontend/     # React + Vite upload UI              (runs on your laptop)
+├── frontend/     # React + Vite app; runs all inference client-side (this is what's deployed)
+├── backend/      # Optional FastAPI reference server (same models, for running locally)
 └── dataset/      # empty; CelebA is downloaded inside Colab, not here (gitignored)
 ```
 
-## Run order (first → last)
+## Use it
+Just open the live demo — pick or drag in a photo, hit **Analyze**. Works with
+one face or many; everything happens on your device.
 
-### 1. Train the model (Google Colab — needs GPU)
-1. Open `training/smile_classifier_training.ipynb` in Colab.
-2. `Runtime → Change runtime type → GPU`, then **Run all**.
-3. It downloads CelebA, trains + fine-tunes MobileNetV2, evaluates, and downloads
-   **`smile_classifier.keras`** at the end.
-
-### 2. Install the model
-Put the downloaded file at:
-```
-backend/model/smile_classifier.keras
-```
-
-### 3. Start the backend (see `backend/README.md`)
-```bash
-cd backend
-py -3.12 -m venv .venv && source .venv/Scripts/activate   # Git Bash
-pip install -r requirements.txt
-uvicorn main:app --reload --port 8000
-```
-Check: http://localhost:8000/health → `{"status":"ok","model_loaded":true}`
-
-### 4. Start the frontend (see `frontend/README.md`)
+## Run the frontend locally
 ```bash
 cd frontend
 npm install
 npm run dev
 ```
-Open http://localhost:5173 and upload a photo. 🎉
+Open http://localhost:5173.
+
+## Train the model (optional — a trained model is already bundled)
+1. Open `training/smile_classifier_training.ipynb` in Google Colab.
+2. `Runtime → Change runtime type → GPU`, then **Run all**.
+3. It downloads CelebA, trains + fine-tunes MobileNetV2, evaluates, and exports
+   **`smile_classifier.keras`**. Convert it to `smile.tflite` and drop it in
+   `frontend/public/models/` to ship a retrained model to the browser app.
+
+## Optional: the reference backend
+`backend/` is the original FastAPI server — same YuNet detection and same
+MobileNetV2 model, exposed over `POST /predict`. It isn't needed for the live
+site (which is fully client-side) but is handy for local experiments:
+```bash
+cd backend
+py -3.12 -m venv .venv && source .venv/Scripts/activate   # Git Bash
+pip install -r requirements.txt
+uvicorn main:app --reload --port 8000                     # http://localhost:8000/health
+```
 
 ## Tech stack
 - **Training:** TensorFlow / Keras, MobileNetV2 transfer learning, CelebA (kagglehub), Colab GPU
-- **Backend:** FastAPI, Uvicorn, OpenCV (YuNet deep-learning face detection), Pillow
-- **Frontend:** React 18, Vite
+- **Browser app:** React 18, Vite, onnxruntime-web (YuNet face detection), tfjs-tflite (MobileNetV2)
+- **Reference backend:** FastAPI, Uvicorn, OpenCV (YuNet), Pillow
 
 ## Key design note
-Image preprocessing (scaling to [-1, 1]) is **baked into the Keras model**
-(training notebook, Phase 8). So the backend feeds raw 0–255 RGB pixels resized
-to 224×224 and does **not** normalize again. Keep these in sync if you retrain.
+Image preprocessing (scaling to [-1, 1]) is **baked into the model** (training
+notebook, Phase 8). Both the browser app and the backend feed raw 0–255 RGB
+pixels resized to 224×224 and do **not** normalize again. Keep these in sync if
+you retrain.
 
-## Deploy as a live website (Hugging Face Spaces)
-
-The included `Dockerfile` builds the React UI and runs the FastAPI server that
-serves **both the UI and the API on one port** — so the whole app deploys as a
-single free **Hugging Face Space** (no CORS, one link to share).
-
-1. Create a free account at <https://huggingface.co>, then a token at
-   **Settings → Access Tokens** (role **write**).
-2. **New Space** → SDK **Docker** → **Blank** → name it `smile-classifier`.
-3. Large files on Hugging Face use Git LFS, so track the model before pushing:
-   ```bash
-   git lfs track "*.keras"
-   git add .gitattributes && git commit -m "Track model with LFS"
-   ```
-4. Push this repo to the Space's git remote:
-   ```bash
-   git remote add space https://huggingface.co/spaces/<hf-username>/smile-classifier
-   git push space main        # username = your HF name, password = the write token
-   ```
-5. The Space builds the image and goes live at
-   `https://<hf-username>-smile-classifier.hf.space` — share that link with anyone.
-
-Prefer a split host instead? Build the frontend (`npm run build`, output `dist/`)
-on Vercel/Netlify and set `VITE_API_BASE` to a separately deployed backend URL.
-
-## Push to GitHub
-```bash
-cd smile-classifier
-git init
-git add .
-git commit -m "AI Smile Classifier: training notebook + FastAPI backend + React frontend"
-git branch -M main
-git remote add origin https://github.com/<your-username>/smile-classifier.git
-git push -u origin main
-```
+## How it's deployed
+`npm run build` in `frontend/` produces `dist/`, which is published to the
+`gh-pages` branch and served by GitHub Pages at the link above. Because all
+inference runs client-side with WebAssembly, the site is free to host and needs
+no server.
 
 ## Credits
 Dataset: **CelebA** (Liu et al., ICCV 2015), via the Kaggle mirror
