@@ -25,8 +25,9 @@ backend/static/
 .env.local
 *.local
 
-# Local dev helper (machine-specific absolute paths)
+# Local dev helpers (machine-specific absolute paths)
 frontend/run-dev.bat
+frontend/run-preview.bat
 
 # OS / editors
 .DS_Store

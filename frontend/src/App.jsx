@@ -1,11 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import './App.css'
-
-// API origin. In the single-service Docker / Hugging Face deploy the UI and API
-// share one origin, so we call a relative path (''). Locally the Vite dev server
-// (:5173) and the API (:8000) differ, so we fall back to localhost. Override
-// either case with a .env.local containing VITE_API_BASE=...
-const API = import.meta.env.VITE_API_BASE ?? (import.meta.env.DEV ? 'http://localhost:8000' : '')
+import { initEngine, analyzePhoto } from './smile'
 
 export default function App() {
   const [file, setFile] = useState(null)
@@ -15,8 +10,19 @@ export default function App() {
   const [error, setError] = useState(null)
   const [dragging, setDragging] = useState(false)
   const [imgBox, setImgBox] = useState({ w: 1, h: 1, natW: 1, natH: 1 })
+  const [engineReady, setEngineReady] = useState(false)
+  const [engineErr, setEngineErr] = useState(null)
   const imgRef = useRef(null)
   const inputRef = useRef(null)
+
+  // Load the models once, in the browser, on first mount.
+  useEffect(() => {
+    let alive = true
+    initEngine()
+      .then(() => alive && setEngineReady(true))
+      .catch((e) => alive && setEngineErr(e?.message || 'Could not load the model in this browser.'))
+    return () => { alive = false }
+  }, [])
 
   const handleFile = useCallback((f) => {
     if (!f) return
@@ -34,29 +40,28 @@ export default function App() {
   }, [])
 
   const analyze = useCallback(async () => {
-    if (!file) return
+    if (!file || !imgRef.current) return
+    if (!engineReady) {
+      setError('The model is still loading — please try again in a moment.')
+      return
+    }
     setLoading(true)
     setError(null)
     setResult(null)
     try {
-      const form = new FormData()
-      form.append('file', file)
-      const res = await fetch(`${API}/predict`, { method: 'POST', body: form })
-      if (!res.ok) {
-        const detail = await res.json().catch(() => ({}))
-        throw new Error(detail.detail || `Server error (${res.status})`)
+      const img = imgRef.current
+      if (!img.complete || !img.naturalWidth) {
+        await new Promise((res, rej) => { img.onload = res; img.onerror = rej })
       }
-      setResult(await res.json())
+      // let the "Analyzing…" overlay paint before inference starts
+      await new Promise((r) => setTimeout(r, 20))
+      setResult(await analyzePhoto(img))
     } catch (e) {
-      setError(
-        e.message === 'Failed to fetch'
-          ? `Cannot reach the API at ${API}. Is the backend running?`
-          : e.message
-      )
+      setError(e?.message || 'Something went wrong while analyzing the photo.')
     } finally {
       setLoading(false)
     }
-  }, [file])
+  }, [file, engineReady])
 
   const reset = () => {
     setFile(null)
@@ -151,13 +156,17 @@ export default function App() {
         </div>
 
         <div className="actions">
-          <button className="primary" disabled={!file || loading} onClick={analyze}>
-            {loading ? <><span className="spinner sm" /> Analyzing…</> : <>✨ Analyze photo</>}
+          <button className="primary" disabled={!file || loading || !engineReady} onClick={analyze}>
+            {loading
+              ? <><span className="spinner sm" /> Analyzing…</>
+              : (!engineReady && !engineErr)
+                ? <><span className="spinner sm" /> Loading model…</>
+                : <>✨ Analyze photo</>}
           </button>
           {file && <button className="ghost" onClick={reset} disabled={loading}>Clear</button>}
         </div>
 
-        {error && <div className="error">⚠️ {error}</div>}
+        {(error || engineErr) && <div className="error">⚠️ {error || engineErr}</div>}
 
         {result && (
           <div className="result">
@@ -179,8 +188,10 @@ export default function App() {
         )}
 
         <footer>
-          <span className="live"><span className="dot" /> API</span>
-          <code>{API || 'same-origin'}</code>
+          <span className={`live ${engineReady ? '' : 'off'}`}>
+            <span className="dot" /> {engineReady ? 'On-device' : engineErr ? 'Unavailable' : 'Loading…'}
+          </span>
+          <code>runs in your browser · nothing is uploaded</code>
         </footer>
       </div>
     </div>
